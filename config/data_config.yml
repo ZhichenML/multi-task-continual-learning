@@ -1,0 +1,49 @@
+# dataset:
+data_dir: "/mnt/storage/gongzhichen.gzc/SLU_Baseline/data/CLdata/data_split_by_domain/"
+train_file: "data.train/"
+test_file: "data.valid/"
+dev_file: "data.test/"
+
+meta_dir : "/mnt/storage/gongzhichen.gzc/SLU_Baseline/data/CLdata/data_split_by_domain/side_info/"
+cates_file: "service_cate.txt"
+acts_file: "meta_action.txt"
+tag_file: "meta_tag.txt"
+max_seq_len: 35
+unk_word: "$UNK$"
+pad_word: "$PAD$"
+unk_tag: "O"
+batch_size: 512
+bert_dir: &bert_dir '/mnt/data/public/bert/chinese_L-12_H-768_A-12/'
+#bert_dir: &bert_dir '/mnt/nlp/bert/chinese_L-12_H-768_A-12/'
+#bert_dir: &bert_dir '/mnt/nlp/bert/chinese_simbert_L-4_H-312_A-12's
+# bert_dir: '/mnt/nlp/bert/chinese_rbt3_L-3_H-768_A-12/'
+# bert_dir: "/mnt/nlp/bert/StructBert-base-Chinese-Single/"
+# bert_dir: "/mnt/nlp/bert/ERNIE_stable-1.0.1/checkpoints/"
+bert_init_checkpoint: "bert_model.ckpt"
+#bert_vocab: "vocab.txt"
+bert_vocab: "vocab.txt"
+bert_config: "bert_config.json"
+
+# model:
+add_meta_tag_num: 0
+add_cate_num: 0
+
+alias: "meta_nlu"
+task_type: "train"
+# checkpoint_dir: "result/checkpoint/bert_1019/model" # 非crf，
+# checkpoint_dir: "result/checkpoint/bert_1019_crf/model.ckpt-176000" # crf，
+teacher_ckpt: "result/checkpoint/joint_bert_cl_domain_0508/model_prev/model/"
+checkpoint_dir: "result/checkpoint/joint_bert_cl_domain_0508/model/"
+early_stop: True
+epoch_no_imprv: 5
+use_crf: 0
+optimizer: "adam"
+learning_rate: 0.001
+lr_decay: 0.95
+decay_step: 7000
+dropout: 0.3
+num_epoch: 1
+embedding_dim: 100
+bert_lr: 0.00005
+warmup_proportion: 0.1
+use_sigmoid: 1
