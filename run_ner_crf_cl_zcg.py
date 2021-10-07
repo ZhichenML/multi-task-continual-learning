@@ -56,6 +56,7 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ew
     bert_param_optimizer = list(model.bert.named_parameters())
     crf_param_optimizer = list(model.crf.named_parameters())
     linear_param_optimizer = list(model.classifier.named_parameters())
+    cates_param_optimizer = list(model.cates_classifier.named_parameters())
     optimizer_grouped_parameters = [
         {'params': [p for n, p in bert_param_optimizer if not any(nd in n for nd in no_decay)],
          'weight_decay': args.weight_decay, 'lr': args.learning_rate},
@@ -70,6 +71,11 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ew
         {'params': [p for n, p in linear_param_optimizer if not any(nd in n for nd in no_decay)],
          'weight_decay': args.weight_decay, 'lr': args.crf_learning_rate},
         {'params': [p for n, p in linear_param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0,
+         'lr': args.crf_learning_rate},
+
+        {'params': [p for n, p in cates_param_optimizer if not any(nd in n for nd in no_decay)],
+         'weight_decay': args.weight_decay, 'lr': args.crf_learning_rate},
+        {'params': [p for n, p in cates_param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0,
          'lr': args.crf_learning_rate}
     ]
     args.warmup_steps = int(t_total * args.warmup_proportion)
@@ -112,7 +118,7 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ew
     global_step = 0
     steps_trained_in_current_epoch = 0
     # Check if continuing training from a checkpoint
-    if os.path.exists(args.model_name_or_path) and "checkpoint" in args.model_name_or_path:
+    if False and os.path.exists(args.model_name_or_path) and "checkpoint" in args.model_name_or_path:
         # set global_step to gobal_step of last saved checkpoint from model path
         global_step = int(args.model_name_or_path.split("-")[-1].split("/")[0])
         epochs_trained = global_step // (len(train_dataloader) // args.gradient_accumulation_steps)
@@ -128,7 +134,8 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ew
     
     ewc.set_optimizer(optimizer)
     print("regiester!!!!!!!!!!!!!!")
-    ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
+    # ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
+    
 
     pbar = ProgressBar(n_total=len(train_dataloader), desc='Training', num_epochs=int(args.num_train_epochs))
     if args.save_steps==-1 and args.logging_steps==-1:
@@ -247,6 +254,7 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ew
     # test after all epoches training
     test_result, cates_result = evaluate(args, model, tokenizer, test_dataset, prefix=prefix, data_type='test')
 
+    logger.info("register FIM")
     ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
 
     return  test_result, cates_result
@@ -368,9 +376,9 @@ def evaluate(args, model, tokenizer, eval_dataset, prefix="",  data_type='dev'):
     eval_info_cates, class_info = cates_metric.results()
     cates_results = {f'{key}': value for key, value in eval_info_cates.items()}
     cates_results['loss'] = cates_eval_loss
-    cates_results['acc'] = precision_score(y_true, y_pred, average='micro')
-    cates_results['recall'] = recall_score(y_true, y_pred, average='micro')
-    cates_results['f1'] = f1_score(y_true, y_pred, average='micro')
+    cates_results['acc'] = precision_score(y_true, y_pred, average='macro')
+    cates_results['recall'] = recall_score(y_true, y_pred, average='macro')
+    cates_results['f1'] = f1_score(y_true, y_pred, average='macro')
     
 
     cates_info = "-".join([f' {key}: {value:.4f} ' for key, value in cates_results.items()])
@@ -586,6 +594,18 @@ def main():
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
     model.to(args.device)
+    
+    partial_freeze = False
+    if partial_freeze:
+        for n, p in model.bert.named_parameters():
+            freeze_layers = ["layer." + str(v) for v in range(0,6)]
+            if any([v in n for v in freeze_layers]):
+                print(n,'\n')
+                p.requires_grad = False
+
+
+    
+
     logger.info("Training/evaluation parameters %s", args)
 
     ewc = EWC_LOSS(model)
