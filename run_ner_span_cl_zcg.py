@@ -37,7 +37,7 @@ MODEL_CLASSES = {
     'bert': (BertConfig, BertSpanForNer, BertTokenizer),
 }
 
-def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
+def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ewc):
     """ Train the model """
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
@@ -53,6 +53,7 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
     bert_parameters = model.bert.named_parameters()
     start_parameters = model.start_fc.named_parameters()
     end_parameters = model.end_fc.named_parameters()
+    cates_param_optimizer = list(model.cates_classifier.named_parameters())
     optimizer_grouped_parameters = [
         {"params": [p for n, p in bert_parameters if not any(nd in n for nd in no_decay)],
          "weight_decay": args.weight_decay, 'lr': args.learning_rate},
@@ -68,6 +69,11 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
          "weight_decay": args.weight_decay, 'lr': 0.001},
         {"params": [p for n, p in end_parameters if any(nd in n for nd in no_decay)], "weight_decay": 0.0
             , 'lr': 0.001},
+            
+        {'params': [p for n, p in cates_param_optimizer if not any(nd in n for nd in no_decay)],
+         'weight_decay': args.weight_decay, 'lr': args.learning_rate},
+        {'params': [p for n, p in cates_param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0,
+         'lr': args.learning_rate},
     ]
     args.warmup_steps = int(t_total * args.warmup_proportion)
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
@@ -123,8 +129,8 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
         fgm = FGM(model, emb_name=args.adv_name, epsilon=args.adv_epsilon)
     model.zero_grad()
     
-    ewc = EWC_LOSS(model)
     ewc.set_optimizer(optimizer)
+    print("regiester!!!!!!!!!!!!!!")
 
     pbar = ProgressBar(n_total=len(train_dataloader), desc='Training', num_epochs=int(args.num_train_epochs))
     if args.save_steps==-1 and args.logging_steps==-1:
@@ -190,7 +196,6 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
                 
         logger.info("\n")
 
-        ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
 
         if 'cuda' in str(args.device):
             torch.cuda.empty_cache()
@@ -252,6 +257,8 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
         torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
         logger.info("Saving optimizer and scheduler states to %s", output_dir)
         
+    logger.info("register FIM")
+    ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
 
     return test_result, cates_results
 
@@ -340,9 +347,9 @@ def evaluate(args, model, tokenizer, eval_features, prefix="", data_type='dev'):
     eval_info_cates, class_info = cates_metric.results()
     cates_results = {f'{key}': value for key, value in eval_info_cates.items()}
     cates_results['loss'] = cates_eval_loss
-    cates_results['acc'] = precision_score(y_true, y_pred, average='micro')
-    cates_results['recall'] = recall_score(y_true, y_pred, average='micro')
-    cates_results['f1'] = f1_score(y_true, y_pred, average='micro')
+    cates_results['acc'] = precision_score(y_true, y_pred, average='macro')
+    cates_results['recall'] = recall_score(y_true, y_pred, average='macro')
+    cates_results['f1'] = f1_score(y_true, y_pred, average='macro')
     
     cates_info = "-".join([f' {key}: {value:.4f} ' for key, value in cates_results.items()])
 
@@ -510,6 +517,7 @@ def print_eval_matrix(eval_matrix):
 
 
 def main():
+    print("here 0")
     args = get_argparse().parse_args()
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
@@ -523,7 +531,7 @@ def main():
         raise ValueError(
             "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
                 args.output_dir))
-    
+    print("here 1")
     # 2. Setup CUDA, GPU & distributed training
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
@@ -538,7 +546,8 @@ def main():
                    args.local_rank, device, args.n_gpu, bool(args.local_rank != -1), args.fp16, )
     # Set seed
     seed_everything(args.seed)
-
+    
+    print("readin Data !!!!!!!!")
     # train_dataset, _, num_labels, args.id2label, args.label2id = get_data("train")
     # valid_dataset, valid_features, _, _, _ = get_data("dev")
     # test_dataset, test_features, _, _, _ = get_data("test")
@@ -568,6 +577,8 @@ def main():
     model.to(args.device)
     logger.info("Training/evaluation parameters %s", args)
 
+    ewc = EWC_LOSS(model)
+
     eval_matrix = []
     eval_matrix_cates = []
     # Training
@@ -582,7 +593,7 @@ def main():
             _, valid_set = process_data(valid_dataset, task_name)
             _, test_set = process_data(test_dataset, task_name)
 
-            test_result, test_result_cates = train(args, train_set, valid_set, test_set, model, tokenizer)
+            test_result, test_result_cates = train(args, train_set, valid_set, test_set, model, tokenizer, ewc)
             test_result["task_name"]=task_name
 
             logger.info(" task name: %s", task_name)

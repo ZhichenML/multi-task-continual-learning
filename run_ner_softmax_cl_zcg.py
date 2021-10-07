@@ -47,7 +47,7 @@ MODEL_CLASSES = {
 
 
 
-def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
+def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer, ewc):
     """ Train the model """
     args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
     train_sampler = RandomSampler(train_dataset) if args.local_rank == -1 else DistributedSampler(train_dataset)
@@ -61,11 +61,14 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
+    
     optimizer_grouped_parameters = [
         {"params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
         "weight_decay": args.weight_decay,},
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+
     ]
+    
     args.warmup_steps = int(t_total * args.warmup_proportion)
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps,
@@ -121,8 +124,9 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
         fgm = FGM(model, emb_name=args.adv_name, epsilon=args.adv_epsilon)
     model.zero_grad()
 
-    ewc = EWC_LOSS(model)
+   
     ewc.set_optimizer(optimizer)
+    print("regiester!!!!!!!!!!!!!!")
 
     
     pbar = ProgressBar(n_total=len(train_dataloader), desc='Training', num_epochs=int(args.num_train_epochs))
@@ -216,9 +220,6 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
 
         logger.info("\n")
         
-        
-        ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
-        
         if 'cuda' in str(args.device):
             torch.cuda.empty_cache()
         # Evaluation
@@ -277,6 +278,9 @@ def train(args, train_dataset, valid_dataset, test_dataset, model, tokenizer):
         # torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
         logger.info("Saving optimizer and scheduler states to %s", output_dir)
+
+    logger.info("register FIM")
+    ewc.register_ewc_params(train_dataloader, len(train_dataloader), args.num_labels)
 
     return test_result, cates_result
 
@@ -423,9 +427,9 @@ def evaluate(args, model, tokenizer, eval_dataset, prefix="", data_type='dev'):
     eval_info_cates, class_info = cates_metric.results()
     cates_results = {f'{key}': value for key, value in eval_info_cates.items()}
     cates_results['loss'] = cates_eval_loss
-    cates_results['acc'] = precision_score(y_true, y_pred, average='micro')
-    cates_results['recall'] = recall_score(y_true, y_pred, average='micro')
-    cates_results['f1'] = f1_score(y_true, y_pred, average='micro')
+    cates_results['acc'] = precision_score(y_true, y_pred, average='macro')
+    cates_results['recall'] = recall_score(y_true, y_pred, average='macro')
+    cates_results['f1'] = f1_score(y_true, y_pred, average='macro')
     
     cates_info = "-".join([f' {key}: {value:.4f} ' for key, value in cates_results.items()])
 
@@ -659,6 +663,7 @@ def main():
 
     model.to(args.device)
 
+    ewc = EWC_LOSS(model)
 
     logger.info("Training/evaluation parameters %s", args)
     eval_matrix = []
@@ -670,7 +675,7 @@ def main():
             valid_set = process_data(valid_dataset, task_name)
             test_set = process_data(test_dataset, task_name)
 
-            test_result, test_result_cates = train(args, train_set, valid_set, test_set, model, tokenizer)
+            test_result, test_result_cates = train(args, train_set, valid_set, test_set, model, tokenizer, ewc)
             test_result["task_name"]=task_name
 
             logger.info(" task name: %s", task_name)
