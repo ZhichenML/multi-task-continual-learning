@@ -13,7 +13,7 @@ def print_eval_matrix(eval_matrix):
         print(eval_matrix[i])
         print("\n")
 
-def plot(path="./outputs/cner_output/bert/span_eval_matrix.npz"):
+def plot(path="./outputs/cner_output/bert/span_eval_matrix_macro.npz"):
     res = np.load(path, allow_pickle=True)
     # eval_matrix=res["eval_matrix"] 
     eval_matrix=res["eval_matrix_cates"]
