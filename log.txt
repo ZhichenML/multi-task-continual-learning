@@ -1,0 +1,179 @@
+工作计划
+1. bert fine-tuning，fine-tune最后几层，增加FC output layer [Done]
+2. EWC 计算，Fisher information metric 通过采样得到
+    a. https://github.com/YangWang92/overcoming-catastrophic/blob/master/model.py
+    b. https://gist.github.com/anonymous/f7e08625f3e0251b4301a0e632891ebe
+3. LWF，freeze 之前任务的output参数
+    a. 先加入当前任务参数进行warm-up traininig, 再将当前任务参数加入past_vars 进行联合训练，通过利用返回的optimizer修改train_op 的参数列表
+    b. distil probability label 设置T=2
+    c. 训练时间增加严重，推测是optimizer.minimize(var_list) 导致graph复制 [solved]
+    d. 编写计算distil crossentropy的函数
+    i. 建图：self.logit_cates_distil = tf.Variable([None, None]) 保存新模型预测， self.cates_distill = tf.placeholder([None, None]) 保存旧模型预测，函数CE计算cross entropy
+    ii. 训练：在fit()中修改train_op() 的loss, 在run_epoch() 中准备fd 和 varible。
+4. data.py 增加数据集输入domains_intents (dict domain->intents), 当前任务名，增加对该domain的one-hot输出
+    a. next_task() 更改输入为task_name_list (to do), 以允许多个task数据合并
+5. LWF v2.py 要求输入当前任务名，输出该domain的y_pred, 结合one-hot label 计算cross entropy。保存过去训练过的任务名，并输出y_pred 作为distil loss 的标签 [deprecated]
+6. data.py 根据task_setup 重新排序taget label，
+    a. 利用class_map 作为映射
+    b. 修改data size=1, 用于快速测试
+7. auto-label (不完全正确)数据作为增量任务对性能的影响，代码：https://yuque.antfin.com/docs/share/c776a3d2-7214-47a1-a5a8-1298893c7bed#bx8YA
+    a. 从oss下载数据训练模型，拷贝模型ckpt到old_ckpt
+    b. 清空dataset
+    c. 从oss新路径下载第二批数据，修改config，设定new dataset
+    d. load 旧模型 old_ckpt, 训练，测试
+8. 噪声实验
+    a. 数据： /mnt/data/qifang.wy/nlu-20210116
+    b. 增量：每类取min(5%, 200)
+    c. 测试集去除增强 (整体去除增强)，性能
+    d. 自动标注数据测试集 去除噪声 （已发送马哥），性能
+    i. 数据处理流程：auto 输出seg文件，改名为-train.txt 放进三个数据文件下。是用add_noise.py 下采样，再加入噪声
+    ii. 之前错误操作未修正，手动替换三个集合的\3分隔符为 |，导致tag acc 为1，已修正，在/data文件夹下备份了noise-test.txt
+    iii. run_nested_ner_model.py L184记录tag误分类样本
+    iv. 人工数据：增加tag noise，对数据下采样，和真实数据大小相符
+    v. 新数据处理：先用merge 处理，autorun_gzc test ratio 设为1，放进data/dataset/test中
+    vi. 修改BIO_toBILUO.py 40～42, 处理BILUO数据可能重新处理的问题，重新跑人工噪声实验，自动标注噪声实验
+    vii. 第一批数据实验，清空old_check_poinit文件夹
+    viii. 判断编码方式
+# print(isinstance(line[1], unicode))      # 用来判断是否为unicode
+# import sys
+# print(sys.getdefaultencoding())  # 获得系统的默认编码
+    ix. 更新service_tag.txt (B_location
+I_location
+B_poi_type
+I_poi_type
+B_to_poi_type
+I_to_poi_type
+B_addwaypoint
+I_addwaypoint), auto 处理出来的数据加上了think_about other两个field，导致判断样本合法的语句出错（pip_build_nested_ner_data.py L156）减去多余的field, 注释 pip_get_oss_data.py L146-149 停止下载tag文件
+
+
+    e. 噪声源分析 
+    i. 无意义断句， 句子词汇识别错误，打标错误，单句理解无帮助的样本
+    1.  全部全部B_typeI_typecarcontrol|close_windowno_actionOO
+    2. 使用蓝牙播放使用蓝牙播放OOB_typeI_typeOOenter|search_playopensearch_playOOB_typeI_typeOO
+    3. 找合适找合适OB_locI_locnavigation|navigatesearchOB_locationI_location
+    4. 一统江湖一统江湖B_locI_locI_locI_locnavigation|navigateno_actionB_locationI_locationI_locationI_location
+    5. 到钢琴到钢琴OB_locI_locnavigation|navigategotoOB_locationI_location （句子词汇识别错误）
+    6. 关不了关不了OOOcarcontrol|close_sunroofdenypauseOOO （打标错误）
+    7. 不开车了不开车了OB_categoryI_categoryOcarcontrol|close_airdenyOOOO
+    8. 嗯可以嗯可以OOOcarcontrol|open_airconfirmOOO
+
+旧任务新数据
+新任务
+噪声设置
+data noise: 单词替换，词序扰乱
+label noise：label 替换
+
+域外数据
+
+
+
+
+
+新的工作计划
+1. 输出数据统计量表格
+
+
+names_for_table = ['domain_cnt', 'service_cate_cnt','service_tag_cnt', 
+'meta_tag_cnt', 'meta_cate_cnt', 'avg_sentence', 'domain_word_cnt', 
+'intent_sentence_cnt', 'sentence_len_dist', 'intent_sentence_avg']
+
+a. domain, 列：样本数量，句子平均长度，包含tag
+b. intent， 列：样本数量，句子平均长度，包含tag
+c. tag，列：样本数量，句子平均长度
+d. train-valid-test， 列：样本数量，句子平均长度，多标签样本数量，嵌套ner样本数量
+e. 句子长度分布
+
+intent 和tag数量较多，domain_tag_cnt b c 列表不清楚，还是画图
+发现multi intent数量为0， nested ner 数量为0, meta action 是多标签
+2. 表格用csv存储，热力图用bar表示
+
+nohup python mrcl_classification.py --rln 7 --meta_lr 0.001 --update_lr 0.1 --name mrcl_omniglot --steps 20000 --seed 9 --model_name "Neuromodulation_Model.net" 2>&1 &
+
+
+根据transformer包构建joint model class， 完成run_epoch 方法，返回dev performance，完成fit 方法，调用run_epoch 完成训练，返回test performance
+
+1. zhichen: revised the output from one-hot to id, add [CLS] in tags txt, data.py line 675, line 84
+2. max_seq_length 在两个cfg文件都要设置
+3. data.py line 113, 把cls也算入句子长度，和train保持一致
+4. ner_span: subject 是句子的实体chunks，labels 是 去掉BILOU标记的tags，加入start_ids, end_ids
+5. data.py label_list bug修复，ner_span evaluate 输入是features 不是dataset
+6. ner_span code ner_span.py util_ner.py, 
+    a. example.subject 没有计入cls，  模型返回没有计入cls， 
+    b. subjects_id 没有计入cls
+    c. inputs, segment, mask, input_len, start_ids, end_ids 计入CLS
+    d. data.py line 778 修改和上述数据对应
+7. 发现ner_span的recall差别比较大
+
+
+a. 看一下不同tag的句子出现几个实体, mode 预测常常为空
+
+
+
+
+
+
+todo: args.markup
+ 
+
+1. data.py 698 行使用one-hot tags 来处理嵌套ner的情况, 加入cls，并增加padding
+
+
+会议结论：
+去掉嵌套
+嵌套是为了引入kg
+bilou是为了嵌套ner使用的
+
+
+0903
+owm实现，train函数中返回各参数梯度值，train函数返回隐层输出，为各个参数预留projector矩阵，train 函数中更新projector，修正梯度。
+
+
+0908
+ner_seq, 修改collect_fn处理输入
+main函数修改config，加入cates num， acts num
+bert_for_ner 修改loss计算，为三种loss只和
+evaluate 要加入cates 和 acts 的预测，用来计算评价指标
+修改好 三个模型
+
+这部分代码作为加入CL算法的基础代码
+
+查找一天代码，发现是输入cates_ids不能是one-hot，
+eval 部分增加cates acc
+
+0909
+将softmax 已修改的部分移到另外两个模型上
+修改owm，运行
+
+0913
+加入EWC
+
+加入ewc类
+输入ner num_labels, 直接计算会trigger device side error，因为标签对应不上
+两个输出头，对各自参数求梯度，allow_unused=True
+
+修改ewc为累加每个batch的FIM
+增加cates classifier 参数到optimizer
+设置model 前半部分参数require_grad=False
+
+0924
+加入owm
+
+0925 
+
+
+
+
+ps: 
+1. /mnt/ 下空间更大
+2. conda install tensorflow-gpu=1.12 相比于pip安装，会自动安装依赖，避免报错
+3. 查看服务器上tensor events
+ssh -L 16006:127.0.0.1:6006 account@server.address
+tensorboard --logdir="/path/to/log-directory"
+http://127.0.0.1:16006/
+
+4. matplotlib 画图时，去白边和指定分辨率命令
+plt.savefig(savefig_path, bbox_inches='tight', dpi=300)
+指定大小防止覆盖：
+plt.figure(figsize=(20,20))
+https://zodiac911.github.io/blog/matplotlib-axis.html
