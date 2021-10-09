@@ -1,3 +1,13 @@
+工作交接
+主要内容：
+基于bert 的持续学习代码框架
+1. pytorch 代码：/mnt/storage/gongzhichen.gzc/multitask-ContinualLearning，ner模型包括span， softmax， crf，cl算法包含EWC，评价指标包括ner和intent classifcation 的precision， recall， f1值
+2. 与上面代码相关的是文鹏之前整理的adapter projector：http://gitlab.alibaba-inc.com/wenpeng.hwp/multitask-ContinualLearning
+3. 之前的tf 代码：/mnt/storage/gongzhichen.gzc/SLU_Baseline， 包含EWC，LWF，ner模型为softmax
+4. 其他相关文档：https://yuque.antfin.com/kagdox/lrdqc6/gbv01z  目录下
+
+
+
 工作计划
 1. bert fine-tuning，fine-tune最后几层，增加FC output layer [Done]
 2. EWC 计算，Fisher information metric 通过采样得到
